@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "GoogleHomework",
+  "version": "1.0.0",
+  "description": "Injects an iframe into Google Calender for direct integration for GoogleHomework",
+  "content_scripts": [
+    {
+      "matches": ["https://calendar.google.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
