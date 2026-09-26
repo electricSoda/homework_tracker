@@ -43,18 +43,47 @@ function parseImported(data) {
 }
 
 export default function App() {
-  const [tasks, setTasks] = useState(() => {
-    const saved = taskRepository.load()
-    return Array.isArray(saved) ? saved : []
-  })
+  const [tasks, setTasks] = useState([])
   const [showAdd, setShowAdd] = useState(false)
   const [filter, setFilter] = useState('active')
   const [now, setNow] = useState(() => new Date())
   const [notice, setNotice] = useState('')
+  const [isReady, setIsReady] = useState(false)
 
   useEffect(() => {
-    taskRepository.save(tasks)
-  }, [tasks])
+    let cancelled = false
+
+    async function bootstrapTasks() {
+      const saved = await taskRepository.load()
+      if (cancelled) return
+      setTasks(Array.isArray(saved) ? saved : [])
+      setIsReady(true)
+    }
+
+    bootstrapTasks()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isReady) return
+
+    const timer = setInterval(async () => {
+      try {
+        const latest = await taskRepository.load()
+        setTasks((current) => {
+          const next = Array.isArray(latest) ? latest : []
+          return JSON.stringify(current) === JSON.stringify(next) ? current : next
+        })
+      } catch (error) {
+        console.warn('Failed to sync tasks from Supabase:', error)
+      }
+    }, 5000)
+
+    return () => clearInterval(timer)
+  }, [isReady])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60_000)
@@ -76,17 +105,32 @@ export default function App() {
     return sortTasks(list, now)
   }, [tasks, filter, now])
 
+  async function persistTasks(nextTasks) {
+    const ok = await taskRepository.save(nextTasks)
+    if (!ok) {
+      setNotice('Supabase sync failed; your local backup was kept.')
+      setTimeout(() => setNotice(''), 2200)
+    }
+  }
+
   function addTask(input) {
-    setTasks((current) => [...current, makeTask(input)])
+    const next = [...tasks, makeTask(input)]
+    setTasks(next)
     setShowAdd(false)
+    void persistTasks(next)
   }
 
   function updateTask(updated) {
-    setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)))
+    const next = tasks.map((task) => (task.id === updated.id ? updated : task))
+    setTasks(next)
+    void persistTasks(next)
   }
 
   function deleteTask(id) {
-    setTasks((current) => current.filter((task) => task.id !== id))
+    const next = tasks.filter((task) => task.id !== id)
+    setTasks(next)
+    void taskRepository.deleteTask(id)
+    void persistTasks(next)
   }
 
   function exportBackup() {
@@ -116,11 +160,11 @@ export default function App() {
     setTimeout(() => setNotice(''), 2200)
   }
 
-  function clearAll() {
+  async function clearAll() {
     if (!window.confirm('Clear every local task? Export a backup first if you want to keep them.')) return
     setTasks([])
-    taskRepository.clear()
-    setNotice('Cleared local tasks.')
+    const ok = await taskRepository.clear()
+    setNotice(ok ? 'Cleared local tasks.' : 'Could not clear remote tasks; local backup is still protected.')
     setTimeout(() => setNotice(''), 1800)
   }
 

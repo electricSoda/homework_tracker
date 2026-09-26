@@ -55,6 +55,27 @@ The study planner uses the same signal plus remaining workload, then greedily al
 
 ## Free deployment plan
 
+## Integrating with Supabase (optional)
+
+This app includes a Supabase-capable storage adapter. To enable Supabase syncing, set the following Vite environment variables in your local environment or CI (for local development add them to a .env file with VITE_ prefix):
+
+- VITE_SUPABASE_URL — your Supabase project URL
+- VITE_SUPABASE_ANON_KEY — your Supabase anon/public API key
+
+The adapter expects a table named `tasks` with at least these columns:
+
+- id (primary key text or uuid)
+- data (jsonb) — the task object will be stored here
+- updated_at (timestamptz) — used to order rows when loading
+
+If the Supabase environment is not configured or the remote table is unavailable, the app continues to work in a local-first mode and keeps timestamped local JSON backups under localStorage keys starting with `cmu-homework-tracker:v1:backup:`.
+
+When enabled, saves are persisted locally immediately and synced to Supabase in the background. At startup the app will return the local data synchronously and will then attempt to pull remote data: if the remote data differs, it will overwrite localStorage with a backup created first.
+
+This approach is intentionally conservative to avoid data loss while providing a simple sync path.
+
+## Free deployment plan
+
 ### Phase 1 — now
 
 Deploy the Vite build as a static site on **Cloudflare Pages**. The Free plan currently allows static Pages assets with no request charge, supports Git-based deployments, and allows up to 500 builds/month. See Cloudflare's current Pages limits/pricing docs.
