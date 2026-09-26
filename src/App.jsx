@@ -238,10 +238,8 @@ export default function App() {
           )}
         </section>
 
-        <footer className="footer">
-          <span>Saved locally in this browser.</span>
-          <span>Export a backup before switching devices.</span>
-        </footer>
+        {/* <footer className="footer">
+        </footer> */}
       </div>
     </main>
   )
