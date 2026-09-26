@@ -1,0 +1,3 @@
+name="homework-tracker"
+compatability_date="2026-25-9"
+pages_build_output_dir = "./dist"
