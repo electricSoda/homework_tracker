@@ -153,7 +153,12 @@ export default function App() {
     try {
       const imported = parseImported(JSON.parse(await file.text()))
       setTasks(imported)
-      setNotice(`Imported ${imported.length} tasks.`)
+      const ok = await taskRepository.save(imported)
+      if (!ok) {
+        setNotice('Imported locally, but Supabase sync failed.')
+      } else {
+        setNotice(`Imported ${imported.length} tasks.`)
+      }
     } catch {
       setNotice('Could not import that file.')
     }
