@@ -10,6 +10,7 @@
     "deploy:worker": "npm run build && wrangler pages deploy"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "wrangler": "^4.141.0"
