@@ -50,6 +50,14 @@ export function shouldApplyRemoteTaskUpdate(localTask, remoteTask, force = false
   return remoteTime <= localTime
 }
 
+export function matchesPersistedTaskState(expected, actual) {
+  return Boolean(actual)
+    && actual.id === expected.id
+    && actual.progress === expected.progress
+    && actual.dueAt === expected.dueAt
+    && (actual.completedAt ?? null) === (expected.completedAt ?? null)
+}
+
 class LocalBackup {
   load() {
     try {
@@ -189,14 +197,23 @@ class SupabaseRepository {
 
     if (!rows.length) return
 
-    const { error } = await this.client
+    const { data: savedRows, error } = await this.client
       .from(this.table)
       .upsert(rows, {
         onConflict: 'id',
       })
+      .select('id, data')
 
     if (error) {
       throw error
+    }
+
+    for (const id of forcedIds) {
+      const expected = incomingById.get(id)
+      const saved = savedRows?.find((row) => row.id === id)?.data
+      if (!matchesPersistedTaskState(expected, saved)) {
+        throw new Error(`Supabase did not confirm the recurring task reset for ${id}`)
+      }
     }
   }
 

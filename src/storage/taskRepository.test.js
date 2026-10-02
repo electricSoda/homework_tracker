@@ -1,7 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { findDeletedTaskIds, mergeTaskUpdates, shouldApplyRemoteTaskUpdate } from './taskRepository.js'
+import {
+  findDeletedTaskIds,
+  matchesPersistedTaskState,
+  mergeTaskUpdates,
+  shouldApplyRemoteTaskUpdate,
+} from './taskRepository.js'
 
 test('mergeTaskUpdates prefers the newest updatedAt value per task id', () => {
   const current = [
@@ -40,4 +45,16 @@ test('forced recurring reset can replace a stale remote completion', () => {
 
   assert.equal(shouldApplyRemoteTaskUpdate(reset, staleCompletion), false)
   assert.equal(shouldApplyRemoteTaskUpdate(reset, staleCompletion, true), true)
+})
+
+test('remote confirmation requires the recurring task progress reset to be stored', () => {
+  const expected = {
+    id: 'repeat',
+    progress: 0,
+    dueAt: '2026-10-03T12:00:00.000Z',
+    completedAt: null,
+  }
+
+  assert.equal(matchesPersistedTaskState(expected, { ...expected }), true)
+  assert.equal(matchesPersistedTaskState(expected, { ...expected, progress: 100 }), false)
 })

@@ -155,6 +155,7 @@ export default function App() {
     localRevision.current += 1
     setTasks(next)
     void persistTasks(next, completedNow ? { forceIds: [normalized.id] } : undefined)
+    return normalized
   }
 
   function deleteTask(id) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { formatDateTime, formatRatio, formatRelativeDue, urgencyLevel } from '../domain/priority'
 
 function dateTimeInputValue(value) {
@@ -22,9 +22,9 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
   const titleEditing = useRef(false)
   const estimateEditing = useRef(false)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setDraftProgress(task.progress)
-  }, [task.progress])
+  }, [task.progress, task.dueAt])
 
   useEffect(() => {
     if (!titleEditing.current) setDraftTitle(task.title)
@@ -49,8 +49,8 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
     })
   }
 
-  function commitProgress() {
-    const progress = Number(draftProgress)
+  function commitProgress(value) {
+    const progress = Number(value)
     if (progress === task.progress) return
     const completed = {
       ...task,
@@ -58,7 +58,8 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
       completedAt: progress >= 100 ? new Date().toISOString() : null,
       updatedAt: new Date().toISOString(),
     }
-    onChange(completed)
+    const persisted = onChange(completed)
+    if (persisted) setDraftProgress(persisted.progress)
   }
 
   function commitTitle() {
@@ -156,9 +157,13 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
             max="100"
             step="5"
             value={draftProgress}
-            onChange={(e) => setDraftProgress(Number(e.target.value))}
-            onPointerUp={commitProgress}
-            onKeyUp={commitProgress}
+            onChange={(e) => setDraftProgress(Number(e.currentTarget.value))}
+            onPointerUp={(e) => commitProgress(e.currentTarget.value)}
+            onKeyUp={(e) => commitProgress(e.currentTarget.value)}
+            onPointerCancel={(e) => {
+              setDraftProgress(task.progress)
+              e.currentTarget.blur()
+            }}
             style={{ '--progress': `${draftProgress}%` }}
           />
       </div>
