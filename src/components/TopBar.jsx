@@ -15,9 +15,9 @@ export default function TopBar({ onAdd, onExport, onImport, onClear, taskCount, 
           Import
           <input type="file" accept="application/json,.json" onChange={onImport} />
         </label>
-        {!compact && (
+        {/* {!compact && (
           <button className="button button--ghost" onClick={onClear} title="Clear all local data" aria-label="Clear all local data">Clear All</button>
-        )}
+        )} */}
         <button className="button button--primary" onClick={onAdd}>＋ Add task</button>
       </div>
     </header>
