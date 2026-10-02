@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import TaskForm from './components/TaskForm.jsx'
 import TaskRow from './components/TaskRow.jsx'
 import StudyPlanner from './components/StudyPlanner.jsx'
@@ -46,6 +47,7 @@ function parseImported(data) {
 export default function App() {
   const [tasks, setTasks] = useState([])
   const [showAdd, setShowAdd] = useState(false)
+  const [showFocus, setShowFocus] = useState(false)
   const [filter, setFilter] = useState('active')
   const [now, setNow] = useState(() => new Date())
   const [notice, setNotice] = useState('')
@@ -103,6 +105,18 @@ export default function App() {
     return () => clearInterval(timer)
   }, [])
 
+  useEffect(() => {
+    if (!showAdd && !showFocus) return undefined
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') {
+        setShowAdd(false)
+        setShowFocus(false)
+      }
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [showAdd, showFocus])
+
   const activeCount = tasks.filter((task) => task.progress < 100).length
   const completedCount = tasks.length - activeCount
 
@@ -137,6 +151,10 @@ export default function App() {
     setTasks(next)
     setShowAdd(false)
     void persistTasks(next)
+  }
+
+  function toggleFocusSession() {
+    setShowFocus(true)
   }
 
   function updateTask(updated) {
@@ -214,29 +232,60 @@ export default function App() {
           onAdd={() => setShowAdd((value) => !value)}
           onExport={exportBackup}
           onImport={importBackup}
-          onClear={clearAll}
-          taskCount={tasks.length}
           activeCount={activeCount}
-          compact={false}
+          onFocus={toggleFocusSession}
         />
 
-        {showAdd && <TaskForm onAdd={addTask} onClose={() => setShowAdd(false)} />}
+        {showAdd && createPortal(
+          <div className="modal-backdrop" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowAdd(false)
+          }}>
+            <section className="task-modal" role="dialog" aria-modal="true" aria-labelledby="new-task-heading">
+              <div className="task-modal__head">
+                <div>
+                  <p className="eyebrow">NEW ITEM</p>
+                  <h2 id="new-task-heading">Add a task</h2>
+                </div>
+                <button className="modal-close" type="button" onClick={() => setShowAdd(false)} aria-label="Close">×</button>
+              </div>
+              <TaskForm onAdd={addTask} onClose={() => setShowAdd(false)} />
+            </section>
+          </div>,
+          document.body
+        )}
+
+        {showFocus && createPortal(
+          <div className="modal-backdrop" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowFocus(false)
+          }}>
+            <section className="task-modal focus-modal" role="dialog" aria-modal="true" aria-labelledby="focus-heading">
+              <div className="task-modal__head">
+                <div>
+                  <p className="eyebrow">OPTIONAL</p>
+                  <h2 id="focus-heading">Build a focus session</h2>
+                </div>
+                <button className="modal-close" type="button" onClick={() => setShowFocus(false)} aria-label="Close">×</button>
+              </div>
+              <StudyPlanner tasks={tasks} now={now} />
+            </section>
+          </div>,
+          document.body
+        )}
 
         {notice && <div className="notice" role="status">{notice}</div>}
-
-        <StudyPlanner tasks={tasks} now={now} />
 
         <section className="masterview">
           <div className="masterview__head">
             <div>
-              <p className="eyebrow">TODO</p>
+              <p className="eyebrow">YOUR WORK</p>
+              <h2>{filter === 'completed' ? 'Completed' : 'Up next'}</h2>
             </div>
             <div className="filters" role="tablist" aria-label="Task filters">
               {[
-                ['active', `Active ${activeCount}`],
+                ['active', `Active · ${activeCount}`],
                 ['today', 'Today'],
-                ['all', `All ${tasks.length}`],
-                ['completed', `Done ${completedCount}`],
+                ['all', 'All'],
+                ['completed', `Done · ${completedCount}`],
               ].map(([value, label]) => (
                 <button
                   key={value}
@@ -250,26 +299,28 @@ export default function App() {
               ))}
             </div>
           </div>
-          <div className="task-list">
-            {visibleTasks.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                now={now}
-                onChange={updateTask}
-                onDelete={deleteTask}
-              />
-            ))}
-          </div>
-
-          {!visibleTasks.length && (
-            <div className="empty-state">
-              <div className="empty-state__icon">✓</div>
-              <h3>Nothing here.</h3>
-              <p>Add a task, or switch the filter to see completed work.</p>
-              <button className="button button--primary" onClick={() => setShowAdd(true)}>＋ Add task</button>
+          <div className="task-list-viewport" aria-label="Tasks">
+            <div className="task-list">
+              {visibleTasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  now={now}
+                  onChange={updateTask}
+                  onDelete={deleteTask}
+                />
+              ))}
             </div>
-          )}
+
+            {!visibleTasks.length && (
+              <div className="empty-state">
+                <div className="empty-state__icon">✓</div>
+                <h3>Nothing here.</h3>
+                <p>Add a task, or switch the filter to see completed work.</p>
+                <button className="button button--primary" onClick={() => setShowAdd(true)}>＋ Add task</button>
+              </div>
+            )}
+          </div>
         </section>
 
         {/* <footer className="footer">

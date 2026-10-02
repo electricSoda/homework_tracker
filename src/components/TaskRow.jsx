@@ -8,6 +8,7 @@ function dateTimeInputValue(value) {
 }
 
 export default function TaskRow({ task, now, onChange, onDelete }) {
+  const [showDetails, setShowDetails] = useState(false)
   const level = urgencyLevel(task, now)
   const recurrenceLabel = useMemo(() => {
     if (!task.recurrence || task.recurrence.frequency === 'none') return ''
@@ -18,6 +19,7 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
   const [draftProgress, setDraftProgress] = useState(task.progress)
   const [draftTitle, setDraftTitle] = useState(task.title)
   const [draftEstimate, setDraftEstimate] = useState(String(task.estimateMinutes))
+  const [draftCourse, setDraftCourse] = useState(task.course || '')
   const titleInput = useRef(null)
   const titleEditing = useRef(false)
   const estimateEditing = useRef(false)
@@ -40,6 +42,10 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
   useEffect(() => {
     if (!estimateEditing.current) setDraftEstimate(String(task.estimateMinutes))
   }, [task.estimateMinutes])
+
+  useEffect(() => {
+    setDraftCourse(task.course || '')
+  }, [task.course])
 
   function patch(patch) {
     onChange({
@@ -80,10 +86,14 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
     patch({ estimateMinutes: Math.max(5, minutes) })
   }
 
+  function commitCourse() {
+    const course = draftCourse.trim()
+    if (course !== (task.course || '')) patch({ course })
+  }
+
   return (
     <article className={`task-row task-row--${level} ${task.progress >= 100 ? 'task-row--done' : ''}`}>
       <div className="task-main">
-        <div className="task-status-dot" aria-hidden="true" />
         <div className="task-title-wrap">
           <textarea
             ref={titleInput}
@@ -105,48 +115,17 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
             aria-label={`Rename ${task.title}`}
           />
           <div className="task-meta">
-            {task.course && <span className="course-pill">{task.course}</span>}
-            {recurrenceLabel && <span className="recurrence-pill">↻ {recurrenceLabel}</span>}
-            <span>{formatRelativeDue(task, now)}</span>
+            <span className={`course-tag ${task.course ? '' : 'course-tag--empty'}`}>
+              {task.course || 'No class tag'}
+            </span>
+            <span className="task-due-label" title={formatDateTime(task.dueAt)}>{formatRelativeDue(task, now)}</span>
           </div>
-        </div>
-      </div>
-
-      <div className="task-field task-due">
-        <label>Deadline</label>
-        <input
-          type="datetime-local"
-          value={dateTimeInputValue(task.dueAt)}
-          onChange={(e) => {
-            if (e.target.value) patch({ dueAt: new Date(e.target.value).toISOString() })
-          }}
-          title={formatDateTime(task.dueAt)}
-        />
-      </div>
-
-      <div className="task-field task-estimate">
-        <label>Est.</label>
-        <div className="estimate-cell">
-          <input
-            type="number"
-            min="5"
-            step="5"
-            value={draftEstimate}
-            onFocus={() => { estimateEditing.current = true }}
-            onChange={(e) => setDraftEstimate(e.target.value)}
-            onBlur={() => {
-              estimateEditing.current = false
-              commitEstimate()
-            }}
-            aria-label={`Estimated minutes for ${task.title}`}
-          />
-          <span>m</span>
         </div>
       </div>
 
       <div className="task-progress">
         <div className="progress-header">
-          <label htmlFor={`progress-${task.id}`}>Done</label>
+          <label htmlFor={`progress-${task.id}`}>Progress</label>
           <span>{draftProgress}%</span>
         </div>
         <input
@@ -168,13 +147,69 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
           />
       </div>
 
-      <div className="task-priority">
-        <span className="priority-chip">{formatRatio(task, now)}</span>
-        <small>{level === 'done' ? 'complete' : 'time / work left'}</small>
-      </div>
+      <button
+        type="button"
+        className="row-disclosure"
+        aria-expanded={showDetails}
+        aria-controls={`task-details-${task.id}`}
+        onClick={() => setShowDetails((shown) => !shown)}
+        aria-label={`${showDetails ? 'Hide' : 'Show'} details for ${task.title}`}
+      >
+        <span aria-hidden="true">···</span>
+      </button>
 
-      <div className="task-actions">
-        <button className="icon-button" onClick={() => onDelete(task.id)} title="Delete task" aria-label="Delete task">×</button>
+      <div className="task-details" id={`task-details-${task.id}`} hidden={!showDetails}>
+        <div className="task-field task-course">
+          <label htmlFor={`course-${task.id}`}>Class</label>
+          <input
+            id={`course-${task.id}`}
+            type="text"
+            value={draftCourse}
+            onChange={(e) => setDraftCourse(e.target.value)}
+            onBlur={commitCourse}
+            placeholder="e.g. Biology 101"
+            aria-label={`Class tag for ${task.title}`}
+          />
+        </div>
+
+        <div className="task-field task-due">
+          <label>Exact deadline</label>
+          <input
+            type="datetime-local"
+            value={dateTimeInputValue(task.dueAt)}
+            onChange={(e) => {
+              if (e.target.value) patch({ dueAt: new Date(e.target.value).toISOString() })
+            }}
+            title={formatDateTime(task.dueAt)}
+          />
+        </div>
+
+        <div className="task-field task-estimate">
+          <label>Estimated time</label>
+          <div className="estimate-cell">
+            <input
+              type="number"
+              min="5"
+              step="5"
+              value={draftEstimate}
+              onFocus={() => { estimateEditing.current = true }}
+              onChange={(e) => setDraftEstimate(e.target.value)}
+              onBlur={() => {
+                estimateEditing.current = false
+                commitEstimate()
+              }}
+              aria-label={`Estimated minutes for ${task.title}`}
+            />
+            <span>minutes</span>
+          </div>
+        </div>
+
+        <div className="task-extra-meta">
+          {recurrenceLabel && <span>Repeats {recurrenceLabel.toLowerCase()}</span>}
+          <span title="Time until deadline divided by unfinished work">Time / work: {formatRatio(task, now)}</span>
+        </div>
+
+        <button className="delete-task" onClick={() => onDelete(task.id)} title="Delete task">Delete task</button>
       </div>
     </article>
   )

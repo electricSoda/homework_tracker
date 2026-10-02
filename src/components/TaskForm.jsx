@@ -62,8 +62,8 @@ export default function TaskForm({ onAdd, onClose }) {
           className="course-input"
           value={form.course}
           onChange={(e) => update('course', e.target.value)}
-          placeholder="Course"
-          aria-label="Course"
+          placeholder="Class tag (optional)"
+          aria-label="Class tag"
         />
         <input
           className="date-input"
