@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import TaskForm from './components/TaskForm.jsx'
 import TaskRow from './components/TaskRow.jsx'
 import StudyPlanner from './components/StudyPlanner.jsx'
@@ -49,14 +49,19 @@ export default function App() {
   const [now, setNow] = useState(() => new Date())
   const [notice, setNotice] = useState('')
   const [isReady, setIsReady] = useState(false)
+  const localRevision = useRef(0)
+  const syncInFlight = useRef(false)
 
   useEffect(() => {
     let cancelled = false
+    const startingRevision = localRevision.current
 
     async function bootstrapTasks() {
       const saved = await taskRepository.load()
       if (cancelled) return
-      setTasks(Array.isArray(saved) ? saved : [])
+      if (localRevision.current === startingRevision) {
+        setTasks(Array.isArray(saved) ? saved : [])
+      }
       setIsReady(true)
     }
 
@@ -71,14 +76,20 @@ export default function App() {
     if (!isReady) return
 
     const timer = setInterval(async () => {
+      if (syncInFlight.current) return
+      syncInFlight.current = true
+      const startingRevision = localRevision.current
       try {
         const latest = await taskRepository.load()
         setTasks((current) => {
+          if (localRevision.current !== startingRevision) return current
           const next = Array.isArray(latest) ? latest : []
           return JSON.stringify(current) === JSON.stringify(next) ? current : next
         })
       } catch (error) {
         console.warn('Failed to sync tasks from Supabase:', error)
+      } finally {
+        syncInFlight.current = false
       }
     }, 5000)
 
@@ -115,22 +126,30 @@ export default function App() {
 
   function addTask(input) {
     const next = [...tasks, makeTask(input)]
+    localRevision.current += 1
     setTasks(next)
     setShowAdd(false)
     void persistTasks(next)
   }
 
   function updateTask(updated) {
-    const next = tasks.map((task) => (task.id === updated.id ? updated : task))
+    const previous = tasks.find((task) => task.id === updated.id)
+    const previousTime = new Date(previous?.updatedAt || 0).getTime()
+    const normalized = {
+      ...updated,
+      updatedAt: new Date(Math.max(Date.now(), previousTime + 1)).toISOString(),
+    }
+    const next = tasks.map((task) => (task.id === normalized.id ? normalized : task))
+    localRevision.current += 1
     setTasks(next)
     void persistTasks(next)
   }
 
   function deleteTask(id) {
     const next = tasks.filter((task) => task.id !== id)
+    localRevision.current += 1
     setTasks(next)
     void taskRepository.deleteTask(id)
-    void persistTasks(next)
   }
 
   function exportBackup() {
@@ -152,6 +171,7 @@ export default function App() {
     if (!file) return
     try {
       const imported = parseImported(JSON.parse(await file.text()))
+      localRevision.current += 1
       setTasks(imported)
       const ok = await taskRepository.save(imported)
       if (!ok) {
@@ -167,9 +187,10 @@ export default function App() {
 
   async function clearAll() {
     if (!window.confirm('Clear every local task? Export a backup first if you want to keep them.')) return
+    localRevision.current += 1
     setTasks([])
     const ok = await taskRepository.clear()
-    setNotice(ok ? 'Cleared local tasks.' : 'Could not clear remote tasks; local backup is still protected.')
+    setNotice(ok ? 'Cleared local tasks.' : 'Local tasks cleared, but remote sync failed.')
     setTimeout(() => setNotice(''), 1800)
   }
 

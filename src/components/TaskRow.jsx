@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatDateTime, formatRatio, formatRelativeDue, urgencyLevel } from '../domain/priority'
-import { advanceRecurringTask, nextOccurrence } from '../domain/recurrence'
+import { advanceRecurringTask } from '../domain/recurrence'
 
 function dateTimeInputValue(value) {
   const date = new Date(value)
@@ -10,7 +10,6 @@ function dateTimeInputValue(value) {
 
 export default function TaskRow({ task, now, onChange, onDelete }) {
   const level = urgencyLevel(task, now)
-  const recurrenceNext = task.progress >= 100 ? nextOccurrence(task) : null
   const recurrenceLabel = useMemo(() => {
     if (!task.recurrence || task.recurrence.frequency === 'none') return ''
     if (task.recurrence.frequency === 'daily') return 'Daily'
@@ -18,10 +17,30 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
   }, [task.recurrence])
 
   const [draftProgress, setDraftProgress] = useState(task.progress)
+  const [draftTitle, setDraftTitle] = useState(task.title)
+  const [draftEstimate, setDraftEstimate] = useState(String(task.estimateMinutes))
+  const titleInput = useRef(null)
+  const titleEditing = useRef(false)
+  const estimateEditing = useRef(false)
 
   useEffect(() => {
     setDraftProgress(task.progress)
   }, [task.progress])
+
+  useEffect(() => {
+    if (!titleEditing.current) setDraftTitle(task.title)
+  }, [task.title])
+
+  useEffect(() => {
+    const input = titleInput.current
+    if (!input) return
+    input.style.height = 'auto'
+    input.style.height = `${input.scrollHeight}px`
+  }, [draftTitle])
+
+  useEffect(() => {
+    if (!estimateEditing.current) setDraftEstimate(String(task.estimateMinutes))
+  }, [task.estimateMinutes])
 
   function patch(patch) {
     onChange({
@@ -33,16 +52,33 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
 
   function commitProgress() {
     const progress = Number(draftProgress)
-
-    patch({
+    if (progress === task.progress) return
+    const completed = {
+      ...task,
       progress,
       completedAt: progress >= 100 ? new Date().toISOString() : null,
-    })
+      updatedAt: new Date().toISOString(),
+    }
+    const nextOccurrenceTask = progress >= 100 ? advanceRecurringTask(completed) : null
+    onChange(nextOccurrenceTask || completed)
   }
 
-  function advance() {
-    const next = advanceRecurringTask(task)
-    if (next) onChange(next)
+  function commitTitle() {
+    const title = draftTitle.trim()
+    if (!title) {
+      setDraftTitle(task.title)
+      return
+    }
+    if (title !== task.title) patch({ title })
+  }
+
+  function commitEstimate() {
+    const minutes = Number(draftEstimate)
+    if (!draftEstimate.trim() || !Number.isFinite(minutes)) {
+      setDraftEstimate(String(task.estimateMinutes))
+      return
+    }
+    patch({ estimateMinutes: Math.max(5, minutes) })
   }
 
   return (
@@ -50,10 +86,23 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
       <div className="task-main">
         <div className="task-status-dot" aria-hidden="true" />
         <div className="task-title-wrap">
-          <input
+          <textarea
+            ref={titleInput}
             className="task-title"
-            value={task.title}
-            onChange={(e) => patch({ title: e.target.value })}
+            rows="1"
+            value={draftTitle}
+            onFocus={() => { titleEditing.current = true }}
+            onChange={(e) => setDraftTitle(e.target.value)}
+            onBlur={() => {
+              titleEditing.current = false
+              commitTitle()
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                e.currentTarget.blur()
+              }
+            }}
             aria-label={`Rename ${task.title}`}
           />
           <div className="task-meta">
@@ -83,8 +132,13 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
             type="number"
             min="5"
             step="5"
-            value={task.estimateMinutes}
-            onChange={(e) => patch({ estimateMinutes: Math.max(5, Number(e.target.value) || 5) })}
+            value={draftEstimate}
+            onFocus={() => { estimateEditing.current = true }}
+            onChange={(e) => setDraftEstimate(e.target.value)}
+            onBlur={() => {
+              estimateEditing.current = false
+              commitEstimate()
+            }}
             aria-label={`Estimated minutes for ${task.title}`}
           />
           <span>m</span>
@@ -106,6 +160,7 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
             value={draftProgress}
             onChange={(e) => setDraftProgress(Number(e.target.value))}
             onPointerUp={commitProgress}
+            onKeyUp={commitProgress}
             style={{ '--progress': `${draftProgress}%` }}
           />
       </div>
@@ -116,9 +171,6 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
       </div>
 
       <div className="task-actions">
-        {task.progress >= 100 && recurrenceNext && (
-          <button className="icon-button icon-button--accent" onClick={advance} title="Advance to next occurrence" aria-label="Advance to next occurrence">↻</button>
-        )}
         <button className="icon-button" onClick={() => onDelete(task.id)} title="Delete task" aria-label="Delete task">×</button>
       </div>
     </article>
