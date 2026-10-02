@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { findDeletedTaskIds, mergeTaskUpdates } from './taskRepository.js'
+import { findDeletedTaskIds, mergeTaskUpdates, shouldApplyRemoteTaskUpdate } from './taskRepository.js'
 
 test('mergeTaskUpdates prefers the newest updatedAt value per task id', () => {
   const current = [
@@ -32,4 +32,12 @@ test('findDeletedTaskIds identifies stale tasks that must be removed from remote
   ]
 
   assert.deepEqual(findDeletedTaskIds(current, remote), ['b'])
+})
+
+test('forced recurring reset can replace a stale remote completion', () => {
+  const reset = { id: 'repeat', progress: 0, updatedAt: '2026-10-02T12:00:00.000Z' }
+  const staleCompletion = { id: 'repeat', progress: 100, updatedAt: '2026-10-02T12:00:01.000Z' }
+
+  assert.equal(shouldApplyRemoteTaskUpdate(reset, staleCompletion), false)
+  assert.equal(shouldApplyRemoteTaskUpdate(reset, staleCompletion, true), true)
 })

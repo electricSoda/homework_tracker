@@ -4,6 +4,7 @@ import TaskRow from './components/TaskRow.jsx'
 import StudyPlanner from './components/StudyPlanner.jsx'
 import TopBar from './components/TopBar.jsx'
 import { sortTasks } from './domain/priority.js'
+import { advanceRecurringTask } from './domain/recurrence.js'
 import { taskRepository } from './storage/taskRepository.js'
 
 function createId() {
@@ -51,6 +52,7 @@ export default function App() {
   const [isReady, setIsReady] = useState(false)
   const localRevision = useRef(0)
   const syncInFlight = useRef(false)
+  const pendingWrites = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -76,13 +78,13 @@ export default function App() {
     if (!isReady) return
 
     const timer = setInterval(async () => {
-      if (syncInFlight.current) return
+      if (syncInFlight.current || pendingWrites.current > 0) return
       syncInFlight.current = true
       const startingRevision = localRevision.current
       try {
         const latest = await taskRepository.load()
         setTasks((current) => {
-          if (localRevision.current !== startingRevision) return current
+          if (localRevision.current !== startingRevision || pendingWrites.current > 0) return current
           const next = Array.isArray(latest) ? latest : []
           return JSON.stringify(current) === JSON.stringify(next) ? current : next
         })
@@ -116,11 +118,16 @@ export default function App() {
     return sortTasks(list, now)
   }, [tasks, filter, now])
 
-  async function persistTasks(nextTasks) {
-    const ok = await taskRepository.save(nextTasks)
-    if (!ok) {
-      setNotice('Supabase sync failed; your local backup was kept.')
-      setTimeout(() => setNotice(''), 2200)
+  async function persistTasks(nextTasks, options) {
+    pendingWrites.current += 1
+    try {
+      const ok = await taskRepository.save(nextTasks, options)
+      if (!ok) {
+        setNotice('Supabase sync failed; your local backup was kept.')
+        setTimeout(() => setNotice(''), 2200)
+      }
+    } finally {
+      pendingWrites.current -= 1
     }
   }
 
@@ -135,14 +142,19 @@ export default function App() {
   function updateTask(updated) {
     const previous = tasks.find((task) => task.id === updated.id)
     const previousTime = new Date(previous?.updatedAt || 0).getTime()
-    const normalized = {
+    let normalized = {
       ...updated,
       updatedAt: new Date(Math.max(Date.now(), previousTime + 1)).toISOString(),
     }
+    const completedNow = previous && previous.progress < 100 && normalized.progress >= 100
+    if (completedNow) {
+      normalized = advanceRecurringTask(normalized) || normalized
+    }
+    normalized.updatedAt = new Date(Math.max(Date.now(), previousTime + 1)).toISOString()
     const next = tasks.map((task) => (task.id === normalized.id ? normalized : task))
     localRevision.current += 1
     setTasks(next)
-    void persistTasks(next)
+    void persistTasks(next, completedNow ? { forceIds: [normalized.id] } : undefined)
   }
 
   function deleteTask(id) {

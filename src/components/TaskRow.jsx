@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatDateTime, formatRatio, formatRelativeDue, urgencyLevel } from '../domain/priority'
-import { advanceRecurringTask } from '../domain/recurrence'
 
 function dateTimeInputValue(value) {
   const date = new Date(value)
@@ -59,8 +58,7 @@ export default function TaskRow({ task, now, onChange, onDelete }) {
       completedAt: progress >= 100 ? new Date().toISOString() : null,
       updatedAt: new Date().toISOString(),
     }
-    const nextOccurrenceTask = progress >= 100 ? advanceRecurringTask(completed) : null
-    onChange(nextOccurrenceTask || completed)
+    onChange(completed)
   }
 
   function commitTitle() {

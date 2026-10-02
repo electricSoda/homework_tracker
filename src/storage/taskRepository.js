@@ -41,6 +41,15 @@ export function findDeletedTaskIds(currentTasks = [], remoteTasks = []) {
     .map((task) => task.id)
 }
 
+export function shouldApplyRemoteTaskUpdate(localTask, remoteTask, force = false) {
+  if (!remoteTask) return true
+  if (force) return true
+
+  const remoteTime = new Date(remoteTask.updatedAt || 0).getTime()
+  const localTime = new Date(localTask.updatedAt || 0).getTime()
+  return remoteTime <= localTime
+}
+
 class LocalBackup {
   load() {
     try {
@@ -139,7 +148,7 @@ class SupabaseRepository {
     }))
   }
 
-  async save(tasks) {
+  async save(tasks, { forceIds = [] } = {}) {
     if (!this.client) {
       throw new Error('Supabase is not configured')
     }
@@ -155,17 +164,21 @@ class SupabaseRepository {
 
     const remoteById = new Map((remoteRows ?? []).map((row) => [row.id, row]))
     const incomingById = new Map(incoming.filter((task) => task && task.id).map((task) => [task.id, task]))
+    const forcedIds = new Set(forceIds)
     const rows = [...incomingById.values()].flatMap((task) => {
       const normalized = {
         ...task,
         updatedAt: task.updatedAt || new Date().toISOString(),
       }
       const remoteRow = remoteById.get(normalized.id)
-      const remoteTime = new Date(remoteRow?.data?.updatedAt ?? remoteRow?.updated_at ?? 0).getTime()
-      const localTime = new Date(normalized.updatedAt).getTime()
+      const forceWrite = forcedIds.has(normalized.id)
+      const remoteTask = remoteRow && {
+        ...remoteRow.data,
+        updatedAt: remoteRow.data?.updatedAt ?? remoteRow.updated_at,
+      }
 
       // A delayed save must never replace a newer task already stored remotely.
-      if (remoteRow && remoteTime > localTime) return []
+      if (!shouldApplyRemoteTaskUpdate(normalized, remoteTask, forceWrite)) return []
 
       return [{
         id: normalized.id,
@@ -256,7 +269,7 @@ export const taskRepository = {
     }
   },
 
-  async save(tasks) {
+  async save(tasks, options = {}) {
     const incoming = Array.isArray(tasks) ? tasks : []
     const deleted = local.deletedIds()
     const clearedAt = new Date(local.clearedAt() || 0).getTime()
@@ -278,7 +291,7 @@ export const taskRepository = {
     local.save(protectedTasks)
 
     try {
-      await queueRemoteWrite(() => remote.save(protectedTasks))
+      await queueRemoteWrite(() => remote.save(protectedTasks, options))
       return true
     } catch (e) {
       console.error('Failed to save tasks to Supabase:', e)
