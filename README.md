@@ -9,7 +9,7 @@ I was initially considering doing the Three-Point Estimation (PERT) method to de
 
 `priorityRatio = hoursUntilDeadline / (estimatedHours * remainingFraction)`
 
-# Deployment
+## Deployment
 I currently have this deployed on Cloudflare's serverless website service combined with Supabase for task-syncing across devices.
 
 ## Run it
